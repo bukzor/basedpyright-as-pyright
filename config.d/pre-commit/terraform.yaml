@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://json.schemastore.org/pre-commit-config.json
+
+# Terraform/Terragrunt extension for pre-commit
+# Add these repos to your .pre-commit-config.yaml
+
+repos:
+  - repo: https://github.com/AleksaC/terraform-py
+    rev: v1.10.3
+    hooks:
+      - id: tf-fmt
+
+  - repo: https://github.com/antonbabenko/pre-commit-terraform.git
+    rev: v1.96.2
+    hooks:
+      - id: terraform_tflint
+        pass_filenames: false
+      - id: terraform_tfsec
+        pass_filenames: false
+
+  # Local terragrunt hook
+  - repo: local
+    hooks:
+      - id: terragrunt-hclfmt
+        name: terragrunt-hclfmt
+        entry: terragrunt hclfmt
+        language: system
+        types: [hcl]

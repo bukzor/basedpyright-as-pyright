@@ -1,0 +1,16 @@
+// SQL-specific prettier config - extends base config
+{
+  $schema: "https://raw.githubusercontent.com/SchemaStore/schemastore/refs/heads/master/src/schemas/json/prettierrc.json",
+  proseWrap: "always",
+  trailingComma: "all",
+  plugins: ["prettier-plugin-toml", "prettier-plugin-sql"],
+
+  overrides: [
+    {
+      files: "**/*.bq.sql",
+      options: {
+        language: "bigquery",
+      },
+    },
+  ],
+}

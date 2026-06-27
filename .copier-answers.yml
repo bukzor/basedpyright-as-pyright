@@ -1,0 +1,10 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: 218d5c3
+_src_path: /home/bukzor/repo/github.com/bukzor/template.python-project
+author_email: git config user.email
+author_name: git config user.name
+description: Redirect the pyright engine to basedpyright, gated by the PYRIGHT env
+    var.
+github_username: bukzor
+project_name: basedpyright-as-pyright
+python_version: '3.13'

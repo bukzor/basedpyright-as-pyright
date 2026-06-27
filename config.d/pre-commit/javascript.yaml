@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://json.schemastore.org/pre-commit-config.json
+
+# JavaScript/TypeScript extension for pre-commit
+# Add these repos to your .pre-commit-config.yaml
+
+repos:
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: pnpm-run eslint --fix
+        language: system
+        types_or: [javascript, jsx, ts, tsx]
