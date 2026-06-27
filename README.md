@@ -1,5 +1,7 @@
 # basedpyright-as-pyright
 
+[![CI](https://github.com/bukzor/basedpyright-as-pyright/actions/workflows/ci.yml/badge.svg)](https://github.com/bukzor/basedpyright-as-pyright/actions/workflows/ci.yml)
+
 Make everything that expects **pyright** run **[basedpyright]** instead — the
 editor language server, the `pyright` CLI, `python -m pyright`, `import pyright`,
 and `pytest-pyright` — from a single install, with no per-project changes.
