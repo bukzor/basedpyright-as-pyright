@@ -1,0 +1,1 @@
+import basedpyright_as_pyright; basedpyright_as_pyright.install()
