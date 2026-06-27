@@ -13,6 +13,12 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          # No committed uv.lock (template gitignores it), so key the cache off
+          # the dependency source instead of the default uv.lock/requirements
+          # glob — otherwise the key is constant and the cache never refreshes.
+          cache-dependency-glob: pyproject.toml
 
       # The pyright wrapper and basedpyright run a JS engine via `node`.
       - name: Install Node
