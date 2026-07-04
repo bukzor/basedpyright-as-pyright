@@ -1,6 +1,15 @@
 ---
 managed-by: Skill(llm-subtask)
 status: active
+cost-benefit-sweh:
+  timebox:
+    '@value': 0.5
+    rationale: 'duplicate-shaped: canonical home is the template harvest task; residual here is verify-and-flip when upstream lands'
+    confidence: unsure
+  benefit-2w:
+    '@value': 0.1
+    rationale: bookkeeping only; the substantive value is rated on the template side
+    confidence: unsure
 ---
 
 # Upstream template fixes found building this repo
