@@ -1,3 +1,9 @@
+--- # workaround: anthropics/claude-code#13003
+requires:
+    - Skill(llm-kb)
+git-caution: personal
+---
+
 # Claude Setup Instructions
 
 This is a Python project optimized for Claude Code development.
@@ -29,7 +35,7 @@ uv run pre-commit run --all-files
 - ✅ **Pre-commit hooks** using `uv run` for consistent tooling
 - ✅ **direnv** support with `.envrc`
 - ✅ **Minimal gitignore** with only build products
-- ✅ **Python 3.13+** requirement
+- ✅ **Python 3.10+** requirement
 
 ## Project Setup
 
@@ -38,7 +44,7 @@ configured with your project details:
 
 - Project name: basedpyright-as-pyright
 - Description: Redirect the pyright engine to basedpyright, gated by the PYRIGHT env var.
-- Python version: 3.13
+- Python version: 3.10+
 
 To add dependencies, edit `pyproject.toml` and run `uv sync`.
 
@@ -51,3 +57,15 @@ consistent virtual environment usage:
 - **pyright**: Type checking (runs on whole repo for thorough checking)
 
 Both hooks will run before every commit to maintain code quality.
+
+## Design knowledge base
+
+`docs/dev/` holds the design knowledge base (llm-kb pattern). Load
+`Skill(llm-kb)` before editing anything under it.
+
+- `principles.kb/` — reusable CI/CD design principles: invariants, fail-closed
+  behavior, portability across entry points, and the rules for punting work.
+- `conventions.kb/` — concrete choices for this repo: the `get`/`require`/`ensure`
+  verb taxonomy and the `lib/` directory layout.
+
+Point-in-time decisions with context and alternatives live in `docs/adr/`.

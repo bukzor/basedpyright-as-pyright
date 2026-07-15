@@ -7,7 +7,7 @@ name = "basedpyright-as-pyright"
 version = "0.1.0"
 description = "Redirect the pyright engine to basedpyright, gated by the PYRIGHT env var."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
   "pyright",      # (W) the wrapper whose engine seam we patch
   "basedpyright", # (B) the fork engine we redirect to
