@@ -7,11 +7,16 @@ name = "basedpyright-as-pyright"
 version = "0.1.0"
 description = "Redirect the pyright engine to basedpyright, gated by the PYRIGHT env var."
 readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Buck Evan", email = "workitharder+pypi@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = [
   "pyright",      # (W) the wrapper whose engine seam we patch
   "basedpyright", # (B) the fork engine we redirect to
 ]
+
+[project.urls]
+Repository = "https://github.com/bukzor/basedpyright-as-pyright"
 
 [dependency-groups]
 dev = [
