@@ -21,11 +21,11 @@ Repository = "https://github.com/bukzor/basedpyright-as-pyright"
 [dependency-groups]
 dev = [
   "black>=26.5.1",
-  "copier>=9.16.0",
-  "hypothesis>=6.155.7",
+  "copier>=9.17.0",
+  "hypothesis>=6.161.5",
   "isort>=8.0.1",
   "llm-kb ; python_full_version >= '3.12'",
-  "pre-commit>=4.6.0",
+  "pre-commit>=4.6.1",
   "pyright>=1.1.411",
   "pytest>=9.1.1",
   "pytest-pyright>=0.0.6", # template pinned >=0.0.7, which does not exist on PyPI
