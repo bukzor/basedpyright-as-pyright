@@ -24,7 +24,8 @@ dev = [
   "copier>=9.17.0",
   "hypothesis>=6.161.5",
   "isort>=8.0.1",
-  "llm-kb ; python_full_version >= '3.12'",
+  # FIXME: this needs to be optional, even for dev
+  # "llm-kb ; python_full_version >= '3.12'",
   "pre-commit>=4.6.1",
   "pyright>=1.1.411",
   "pytest>=9.1.1",
