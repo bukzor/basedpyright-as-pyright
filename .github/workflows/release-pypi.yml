@@ -3,20 +3,53 @@
 # docs/dev/technical-policy.kb/least-privilege-grants.md
 name: Release (PyPI)
 
+# The request is a branch; the record is a tag. A human pushes
+# `release/v1.2.3` -- an act that is attributable, reviewable, and revocable
+# (delete the branch and nothing is burned) -- and the pipeline writes the
+# `v1.2.3` tag only after the upload lands. A tag ruleset admits only the
+# release deploy key, so no hand-pushed tag can claim a release happened.
 on:
   push:
-    tags: ["v*"]
+    branches: ["release/v*"]
 
-  # An upload cannot be taken back; a dispatch can. A dispatch runs everything
-  # a tag run does except the prod upload: checks, build, TestPyPI rehearsal,
-  # and a probe that PyPI accepts this workflow as a publisher.
+  # An upload cannot be taken back; a dispatch can. Dispatch rehearses
+  # everything except the prod upload and the tag.
   workflow_dispatch:
+    inputs:
+      version:
+        description: version to rehearse, without the leading v (e.g. 0.2.0)
+        required: true
 
 jobs:
   verify-and-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # hatch-vcs reads the version out of tag history, and the ancestry
+          # check below needs main.
+          fetch-depth: 0
+
+      - name: the branch names the version, or the dispatch input does
+        env:
+          dispatched: ${{ inputs.version }}
+        run: |
+          echo "version=${dispatched:-${GITHUB_REF_NAME#release/v}}" >>"$GITHUB_ENV"
+
+      # A version is immutable once uploaded, so re-releasing one is always a
+      # mistake -- catch it before the build rather than at the registry.
+      - name: the version must not already be released
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version is already released"
+            exit 1
+          fi
+
+      # A release branch can point anywhere; only main has passed CI.
+      - name: the release must name a commit on main
+        if: github.event_name == 'push'
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
       - uses: astral-sh/setup-uv@v7
 
       # The pyright wrapper and basedpyright run a JS engine via `node`.
@@ -24,19 +57,24 @@ jobs:
         with:
           node-version: "20"
 
-      # CI runs on pushes to main and on PRs, never on tags -- so the release
-      # is the only thing standing between an unverified tree and the index.
+      # CI runs on pushes to main and on PRs, never on a release ref -- so the
+      # release is the only thing standing between the tree and the index.
       - run: uv run pyright .
       - run: uv run pytest -v
 
+      # hatch-vcs answers a dirty tree with a dev version instead of an error,
+      # so the cleanliness of the tree is load-bearing on what gets built.
+      - name: the tree must be clean
+        run: git diff --exit-code HEAD
+
+      # The tag names the build. Local only: pushing it is the last thing the
+      # release does, and the ruleset polices the push, not this.
+      - run: git tag "v$version"
+
       - run: uv build
 
-      # A published version is immutable, so a tag that disagrees with the
-      # version in pyproject.toml must fail here rather than upload the wrong
-      # number. The glob keeps the dist name in exactly one place.
-      - name: the tag must name the version that was built
-        if: github.event_name == 'push'
-        run: ls dist/*-"${GITHUB_REF_NAME#v}".tar.gz
+      - name: the build must carry the version that was asked for
+        run: ls dist/*-"$version".tar.gz
 
       - uses: actions/upload-artifact@v7
         with:
@@ -57,20 +95,15 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          # The rehearsal must be re-runnable (this workflow has
-          # workflow_dispatch); a version already staged on TestPyPI is not a
-          # reason to block the promote. Prod stays strict on purpose.
+          # The rehearsal must be re-runnable; a version already staged on
+          # TestPyPI is not a reason to block the promote. Prod stays strict on
+          # purpose.
           skip-existing: true
 
   # Whether PyPI recognizes this (repo, workflow, environment) as a publisher at
   # all -- something neither a local build nor the TestPyPI leg can tell you,
   # since that leg exercises a different registry's registration. The token is
   # never printed; it expires unused.
-  #
-  # For the *first* release the definitive test is still the upload, and that is
-  # free to fail: a missing publisher bounces with `400 Non-user identities
-  # cannot create new projects`; register it, then `gh run rerun` this same run.
-  # The tag does not move and the version is not burned.
   probe-pypi-publisher:
     if: github.event_name == 'workflow_dispatch'
     needs: publish-testpypi
@@ -104,3 +137,25 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  tag:
+    # The commit point, written last: the tag means "this version is on PyPI",
+    # so it cannot precede the upload. If this job fails after a successful
+    # upload, re-run *this job alone* (`gh run rerun --job`) -- the publish is
+    # not repeated, and the release stays recoverable rather than half-done.
+    if: github.event_name == 'push'
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The release identity: a write-scoped deploy key, and the only actor
+          # the tag ruleset lets create `v*`. GITHUB_TOKEN cannot bypass a
+          # ruleset on a user-owned repo, and a human is not supposed to.
+          ssh-key: ${{ secrets.RELEASE_TAG_SSH_KEY }}
+      - name: record the release, then consume the request
+        run: |
+          version="${GITHUB_REF_NAME#release/v}"
+          git tag "v$version" "$GITHUB_SHA"
+          git push origin "v$version"
+          git push origin --delete "$GITHUB_REF_NAME"

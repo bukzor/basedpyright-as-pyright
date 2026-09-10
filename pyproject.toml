@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "basedpyright-as-pyright"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Redirect the pyright engine to basedpyright, gated by the PYRIGHT env var."
 readme = "README.md"
 license = "Apache-2.0"
@@ -37,6 +37,12 @@ dev = [
 addopts = "--doctest-modules"
 python_classes = ["Describe*", "When*", "Test*"]
 python_functions = ["it_*", "test_*"]
+
+# The git tag is the only place a release version is written. A build off a
+# dirty tree or an untagged commit gets a dev version (0.1.1.dev0+g773f3b1),
+# which PyPI rejects outright -- wrong is loud rather than quietly shipped.
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/basedpyright_as_pyright"]
