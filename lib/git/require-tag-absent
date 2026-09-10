@@ -1,0 +1,18 @@
+#!/bin/sh
+# Guard: TAG does not exist on the remote.
+#
+# A published version is immutable, so re-releasing one cannot succeed. Catching
+# it here makes that a plain refusal instead of a failed upload after a build.
+set -eu
+
+if [ $# -ne 1 ]; then
+  echo "usage: ${0##*/} TAG [REMOTE]" >&2
+  exit 2
+fi
+tag="$1"
+remote="${2:-origin}"
+
+if git ls-remote --exit-code --tags "$remote" "refs/tags/$tag" >/dev/null 2>&1; then
+  echo "$tag already exists on $remote" >&2
+  exit 1
+fi

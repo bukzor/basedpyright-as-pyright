@@ -1,0 +1,44 @@
+#!/bin/sh
+# Print one normalized fact about the run. This is the only file that may read
+# the platform's environment; everything downstream consumes what this emits.
+#
+#     get-context sha | ref | default-branch
+#
+# Each field falls back to what git can answer locally, so the same verbs run at
+# a terminal with no CI involved.
+set -eu
+
+if [ $# -ne 1 ]; then
+  echo "usage: ${0##*/} sha|ref|default-branch" >&2
+  exit 2
+fi
+
+case "$1" in
+sha)
+  value="${GITHUB_SHA:-$(git rev-parse HEAD)}"
+  ;;
+ref)
+  value="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
+  ;;
+default-branch)
+  # Not an ambient GitHub variable; the workflow passes it down from
+  # `github.event.repository.default_branch`.
+  if [ -n "${GITHUB_DEFAULT_BRANCH:-}" ]; then
+    value="$GITHUB_DEFAULT_BRANCH"
+  else
+    value="$(git symbolic-ref --short refs/remotes/origin/HEAD)"
+    value="${value#origin/}"
+  fi
+  ;;
+*)
+  echo "unknown context field: $1" >&2
+  exit 2
+  ;;
+esac
+
+if [ -z "$value" ]; then
+  echo "context field is empty: $1" >&2
+  exit 1
+fi
+
+echo "$value"

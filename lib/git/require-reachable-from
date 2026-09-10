@@ -1,0 +1,37 @@
+#!/bin/sh
+# Guard: SHA is contained in REF's history.
+#
+# Reflexive -- SHA == REF passes, because the tip of a branch is part of it.
+#
+# Exit 1 means "not reachable" (a policy answer); exit 2 means the question
+# could not be asked at all (bad revision, truncated history). Collapsing the
+# two would report a typo as a rejected release.
+set -eu
+
+if [ $# -ne 2 ]; then
+  echo "usage: ${0##*/} SHA REF" >&2
+  exit 2
+fi
+sha="$1"
+ref="$2"
+
+# A truncated history answers "not an ancestor" for commits that are one. Refuse
+# to answer rather than answer wrongly.
+if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+  echo "shallow repository: reachability is unknowable here" >&2
+  exit 2
+fi
+
+for rev in "$sha" "$ref"; do
+  if ! git rev-parse --verify --quiet "$rev^{commit}" >/dev/null; then
+    echo "no such commit: $rev" >&2
+    exit 2
+  fi
+done
+
+if git merge-base --is-ancestor "$sha" "$ref"; then
+  exit 0
+fi
+
+echo "$sha is not reachable from $ref" >&2
+exit 1

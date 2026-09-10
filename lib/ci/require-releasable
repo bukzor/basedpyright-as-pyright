@@ -1,0 +1,40 @@
+#!/bin/sh
+# Policy gate: everything that must hold before this SHA may be published.
+#
+#     require-releasable SHA [REQUEST_REF]
+#
+# With a REQUEST_REF, the ref's version must match the changelog's -- the human
+# states what they believe they are releasing and the pipeline refuses if the
+# repository disagrees. Without one (a rehearsal), there is no expectation to
+# check, so the changelog simply is the version.
+#
+# Publishing calls this itself rather than trusting the workflow to have called
+# it: ../../docs/dev/principles.kb/self-guarding-effects.md
+set -eu
+
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+  echo "usage: ${0##*/} SHA [REQUEST_REF]" >&2
+  exit 2
+fi
+sha="$1"
+request_ref="${2:-}"
+
+REPO="${REPO:-$(git rev-parse --show-toplevel)}"
+export REPO
+lib="$REPO/lib"
+
+version="$("$lib/changelog/get-version")"
+
+if [ -n "$request_ref" ]; then
+  requested="$("$lib/ci/get-requested-version" "$request_ref")"
+  if [ "$requested" != "$version" ]; then
+    echo "request asks for $requested, but CHANGELOG.md names $version" >&2
+    exit 1
+  fi
+fi
+
+"$lib/git/require-clean-tree"
+"$lib/git/require-tag-absent" "v$version"
+
+default_branch="$("$lib/ci/providers/github/get-context" default-branch)"
+"$lib/git/require-reachable-from" "$sha" "origin/$default_branch"

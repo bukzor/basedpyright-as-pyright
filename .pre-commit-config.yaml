@@ -41,6 +41,15 @@ repos:
         types: [python]
         pass_filenames: false # For performance with large codebases
 
+      # The portability invariant, enforced rather than hoped for: only
+      # lib/ci/providers/ may know which CI platform this is.
+      - id: require-no-platform-leak
+        name: require no platform leak
+        entry: lib/ci/require-no-platform-leak
+        language: system
+        files: ^lib/
+        pass_filenames: false
+
   # Standard file hygiene hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0

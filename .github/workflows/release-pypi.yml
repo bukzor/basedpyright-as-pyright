@@ -4,51 +4,39 @@
 name: Release (PyPI)
 
 # The request is a branch; the record is a tag. A human pushes
-# `release/v1.2.3` -- an act that is attributable, reviewable, and revocable
-# (delete the branch and nothing is burned) -- and the pipeline writes the
-# `v1.2.3` tag only after the upload lands. A tag ruleset admits only the
-# release deploy key, so no hand-pushed tag can claim a release happened.
+# `triggers/release/v1.2.3` -- attributable, reviewable, and revocable (delete
+# the branch and nothing is burned) -- and the pipeline pushes the `v1.2.3` tag
+# only after the upload lands. A tag ruleset admits only the release deploy key,
+# so no hand-pushed tag can claim a release happened.
+#
+# The ref only *states* a version. CHANGELOG.md is what decides it, and
+# lib/ci/require-releasable refuses if the two disagree.
 on:
   push:
-    branches: ["release/v*"]
+    branches: ["triggers/release/v*"]
 
   # An upload cannot be taken back; a dispatch can. Dispatch rehearses
-  # everything except the prod upload and the tag.
+  # everything except the prod upload and the tag, against whatever version
+  # CHANGELOG.md currently names -- so a rehearsal takes no arguments and can
+  # invent nothing.
   workflow_dispatch:
-    inputs:
-      version:
-        description: version to rehearse, without the leading v (e.g. 0.2.0)
-        required: true
+
+# Two runs releasing one version would both build and then collide at the
+# registry, after the irreversible half has begun for one of them.
+concurrency:
+  group: release-${{ github.ref }}
 
 jobs:
   verify-and-build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
-          # hatch-vcs reads the version out of tag history, and the ancestry
-          # check below needs main.
+          # hatch-vcs reads the version out of tag history, and reachability is
+          # unanswerable in a truncated history.
           fetch-depth: 0
-
-      - name: the branch names the version, or the dispatch input does
-        env:
-          dispatched: ${{ inputs.version }}
-        run: |
-          echo "version=${dispatched:-${GITHUB_REF_NAME#release/v}}" >>"$GITHUB_ENV"
-
-      # A version is immutable once uploaded, so re-releasing one is always a
-      # mistake -- catch it before the build rather than at the registry.
-      - name: the version must not already be released
-        run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
-            echo "::error::v$version is already released"
-            exit 1
-          fi
-
-      # A release branch can point anywhere; only main has passed CI.
-      - name: the release must name a commit on main
-        if: github.event_name == 'push'
-        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
 
       - uses: astral-sh/setup-uv@v7
 
@@ -57,24 +45,35 @@ jobs:
         with:
           node-version: "20"
 
-      # CI runs on pushes to main and on PRs, never on a release ref -- so the
-      # release is the only thing standing between the tree and the index.
+      # The whole gate in one verb: the changelog names the version, the request
+      # (if any) agrees, the version is unreleased, the tree is clean, and the
+      # commit is reachable from the default branch. Runnable at a terminal.
+      - name: the release must be permitted
+        env:
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REQUEST_REF:
+            ${{ github.event_name == 'push' && github.ref_name || '' }}
+        run: lib/ci/require-releasable "$GITHUB_SHA" "$REQUEST_REF"
+
+      - name: the platform surface must stay quarantined
+        run: lib/ci/require-no-platform-leak
+
+      - id: version
+        run: echo "version=$(lib/changelog/get-version)" >>"$GITHUB_OUTPUT"
+
+      # CI runs on pushes to the default branch and on PRs, never on a release
+      # ref -- so this is the only gate between the tree and the index.
       - run: uv run pyright .
       - run: uv run pytest -v
 
-      # hatch-vcs answers a dirty tree with a dev version instead of an error,
-      # so the cleanliness of the tree is load-bearing on what gets built.
-      - name: the tree must be clean
-        run: git diff --exit-code HEAD
-
       # The tag names the build. Local only: pushing it is the last thing the
       # release does, and the ruleset polices the push, not this.
-      - run: git tag "v$version"
+      - run: git tag "v${{ steps.version.outputs.version }}"
 
       - run: uv build
 
       - name: the build must carry the version that was asked for
-        run: ls dist/*-"$version".tar.gz
+        run: ls dist/*-"${{ steps.version.outputs.version }}".tar.gz
 
       - uses: actions/upload-artifact@v7
         with:
@@ -144,7 +143,7 @@ jobs:
     # upload, re-run *this job alone* (`gh run rerun --job`) -- the publish is
     # not repeated, and the release stays recoverable rather than half-done.
     if: github.event_name == 'push'
-    needs: publish-pypi
+    needs: [verify-and-build, publish-pypi]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -154,8 +153,9 @@ jobs:
           # ruleset on a user-owned repo, and a human is not supposed to.
           ssh-key: ${{ secrets.RELEASE_TAG_SSH_KEY }}
       - name: record the release, then consume the request
+        env:
+          version: ${{ needs.verify-and-build.outputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#release/v}"
           git tag "v$version" "$GITHUB_SHA"
           git push origin "v$version"
           git push origin --delete "$GITHUB_REF_NAME"

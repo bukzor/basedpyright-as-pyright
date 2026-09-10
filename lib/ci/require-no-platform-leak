@@ -1,0 +1,26 @@
+#!/bin/sh
+# Guard: only files under a provider directory know which CI platform this is.
+#
+# The portability claim is otherwise untestable prose that rots the first time
+# someone reaches for $GITHUB_SHA two directories away. This turns it into a
+# check that fails: ../../docs/dev/principles.kb/quarantine-the-platform-surface.md
+#
+# `find`, not `git grep`: the latter sees only tracked files, so a leak would
+# pass vacuously for exactly as long as it went uncommitted.
+set -eu
+
+REPO="${REPO:-$(git rev-parse --show-toplevel)}"
+cd "$REPO"
+
+# This file names the very tokens it forbids, so it excludes itself.
+leaks="$(
+  find lib -type f \
+    ! -path 'lib/ci/providers/*' \
+    ! -name require-no-platform-leak \
+    -exec grep -lE 'GITHUB_|(^|[^[:alnum:]_-])gh[[:space:]]' {} + || :
+)"
+
+if [ -n "$leaks" ]; then
+  printf 'platform surface leaked outside lib/ci/providers/:\n%s\n' "$leaks" >&2
+  exit 1
+fi

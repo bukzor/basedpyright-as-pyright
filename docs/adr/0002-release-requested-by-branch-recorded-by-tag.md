@@ -8,8 +8,8 @@
 
 This repo needed to publish to PyPI without a human ever holding registry
 credentials. Trusted publishing (OIDC) settles the credential half. What took
-two passes is the _trigger_: which act starts a release, and what the git tag
-means afterward.
+three passes is the _trigger_: which act starts a release, what decides the
+version, and what the git tag means afterward.
 
 The first implementation triggered on `push: tags: ["v*"]`. It worked -- 0.1.0
 reached PyPI that way on 2026-09-10 -- but it contradicts the design rules
@@ -20,38 +20,61 @@ already written down here:
   the gate can never be turned on.
 - [commit-point] wants the tag written _last_, as the record that a release
   succeeded. A trigger is written first, by definition.
-- [single-source-of-truth] wants the version derived from the tag rather than
-  hand-edited. Combined with a human-pushed tag, that means the human types the
-  released version directly into the ref name -- the one number that can never
-  be corrected afterward.
 
-Under a tag trigger these three cannot all hold. Something else has to carry the
+Under a tag trigger these cannot both hold, so something else has to carry the
 request.
+
+The second pass moved the request to a `release/v*` branch -- and left the
+version number in the pusher's hands, one ref-name earlier. That is a real
+improvement, since the act becomes revocable, but a smaller one than it appears,
+and it still fails [single-source-of-truth]: a number typed at push time is
+authored at push time, reviewed by nobody.
 
 ## Decision
 
-**The branch is the request; the tag is the receipt.**
+**The branch is the request; the changelog is the truth; the tag is the
+receipt.**
 
-A release is started by pushing `release/vX.Y.Z`. The pipeline then:
+A release is started by pushing `triggers/release/vX.Y.Z`. The version in that
+ref is an _assertion_, not a source: `CHANGELOG.md` decides the version, in a
+reviewed change, and the pipeline refuses when the two disagree. Stating an
+expectation the system then verifies is `git push --force-with-lease` applied to
+releases -- the disagreement is the signal, because it means someone's belief
+about what is shipping is wrong while that is still free to discover.
 
-1. refuses if `vX.Y.Z` already exists on the remote (a released version is
-   immutable, so re-releasing one is always a mistake);
-2. refuses if the SHA is not an ancestor of `main` (only main has passed CI);
-3. runs strict `pyright` and `pytest` -- CI never fires on a release ref, so
-   this is the only gate between the tree and the index;
-4. refuses if the tree is dirty (see below);
-5. creates the tag **locally**, builds, and uploads to TestPyPI;
-6. promotes that same artifact -- not a rebuild -- to PyPI;
-7. **pushes the tag**, then deletes the request branch.
+The pipeline then, via `lib/ci/require-releasable`:
 
-The version comes from `hatch-vcs`: `pyproject.toml` carries
-`dynamic = ["version"]` and no number at all. The local tag in step 5 is what
-makes the build's version exact.
+1. refuses if the request's version and the changelog's disagree;
+2. refuses if the tree is dirty -- hatch-vcs answers a dirty tree with a dev
+   version rather than an error, so cleanliness decides what gets built;
+3. refuses if that version is already released, since a published version is
+   immutable and re-releasing one can only fail, later and louder;
+4. refuses if the SHA is not reachable from the default branch, because only
+   there has CI run.
 
-`workflow_dispatch` remains, as a rehearsal only: it takes a required `version`
-input, stops after TestPyPI, and additionally probes that PyPI accepts this
-workflow as a publisher (minting an OIDC token that is never used). It never
-uploads to PyPI and never writes a tag.
+It then runs strict `pyright` and `pytest`, tags **locally**, builds, uploads to
+TestPyPI, promotes those same bytes to PyPI, and finally **pushes the tag** and
+deletes the request branch.
+
+`workflow_dispatch` remains as a rehearsal. It now takes **no inputs**: the
+changelog names the version, so a rehearsal can invent nothing. It stops after
+TestPyPI and additionally probes that PyPI accepts this workflow as a publisher,
+minting an OIDC token that is never used.
+
+### The gates live in `lib/`, not in YAML
+
+[thin-entry-thick-core] says the CI job supplies a SHA and calls one verb. The
+gates are therefore shell scripts under `lib/`, and the workflow calls
+`lib/ci/require-releasable "$SHA" "$REQUEST_REF"`. That is what makes the
+release rules runnable at a terminal, testable in `tests/release_gates_test.py`,
+and portable to another provider -- and `lib/ci/require-no-platform-leak` fails
+the build if anything outside `lib/ci/providers/` learns the platform's name.
+
+Publishing itself stays a `pypa/gh-action-pypi-publish` step rather than a
+`lib/pypi/publish` verb. Re-implementing the OIDC token exchange to satisfy the
+pattern would trade a maintained, audited path for a hand-rolled one; this is a
+[deliberate punt][punting], and it fails loudly the day a second provider
+appears.
 
 ### The release identity is a deploy key
 
@@ -69,8 +92,16 @@ permissions; no job is granted `contents: write`.
 ## Alternatives considered
 
 - **Tag-triggered release** (the first implementation). _Rejected:_ incompatible
-  with tag protection, and it makes the human the author of the version number.
-  It is what shipped 0.1.0; this ADR replaces it.
+  with tag protection, and the tag would mean "someone wanted this" rather than
+  "this shipped" -- a claim that is false whenever a run fails.
+- **A versionless trigger** (`triggers/release`, version derived silently).
+  _Rejected:_ it makes the release act blind -- you learn what you shipped by
+  reading the tag afterward. Same machinery cost as checking an assertion, minus
+  the check.
+- **Deriving the version from conventional commits.** _Rejected for now:_ this
+  repo's log is only loosely conventional (`sweh:`, `todo:`, `packaging:`, and
+  bare sentences), so the derivation would be wrong from day one. A changelog
+  entry is also a better audit trail than a commit-message convention.
 - **`workflow_dispatch` as the release trigger**, version as an input.
   _Rejected:_ the intent then exists only in an Actions log -- not a ref, not
   attributable in git history, not reviewable, and not revocable by deleting
@@ -79,6 +110,9 @@ permissions; no job is granted `contents: write`.
   here (HTTP 422, above). Would be the better choice under an organization.
 - **A repository-admin bypass actor.** _Rejected:_ the admin is the human the
   rule exists to stop.
+- **`release/v*` as the request namespace** (the second pass). _Rejected:_ it
+  collides with the widespread convention for long-lived release _maintenance_
+  branches. See [release-request-refs].
 - **`SETUPTOOLS_SCM_PRETEND_VERSION` instead of a local tag.** _Rejected:_ the
   local tag is what `hatch-vcs` already wants, and it is the same object the
   release later pushes -- so what was built and what is recorded cannot drift.
@@ -90,44 +124,55 @@ permissions; no job is granted `contents: write`.
 
 **Positive**
 
-- Every principle above holds simultaneously: the tag is written last, by the
-  release identity, and is the only place a version number is recorded.
-- The dangerous act is revocable. A wrong `release/v*` branch is deleted and
-  nothing is burned; only a successful upload is irreversible.
-- A dispatch rehearses the exact artifact, including the registry handshake,
-  without spending a version.
+- Every rule above holds at once: the tag is written last, by the release
+  identity, and no version number is authored anywhere but the changelog.
+- The dangerous act is revocable. A wrong request branch is deleted and nothing
+  is burned; only a successful upload is irreversible.
+- The gates run at a terminal and under `pytest`, so "would this release be
+  allowed?" is answerable without pushing anything.
 
 **Risks / mitigations**
 
-- **A long-lived credential now exists.** Mitigated by scope: one repo, write
-  access, used by one job to push one ref. Rotating it is deleting the deploy
-  key and re-running `gh secret set`.
-- **`hatch-vcs` answers a dirty tree with a dev version**
-  (`0.1.1.dev0+g773f3b1`) rather than an error, and PyPI rejects such versions
-  -- loudly, but late. Mitigated by the clean-tree check before the build and a
-  filename check after it.
+- **A long-lived credential now exists** -- the price of removing the human from
+  tag-writing, and the one thing the tag-triggered design did not need. Scoped
+  to one repo, one job, one ref; rotation is deleting the deploy key and
+  re-running `gh secret set`.
 - **The tag job can fail after a successful upload**, leaving a published
   version with no tag. Mitigated by making that job last and independently
-  re-runnable (`gh run rerun --job`), so recovery never re-publishes.
+  re-runnable (`gh run rerun --job`), so recovery never re-publishes. This is
+  exactly the packages-without-tags drift [commit-point] wants reconciled, and
+  no audit job exists yet.
 - **`hatch-vcs` needs git metadata at build time.** Installing from a released
   sdist is unaffected (the version is baked into `PKG-INFO`), but building from
   an unpacked tarball without `.git` fails.
+- **Two runs for one version** would both build and then collide at the
+  registry, after the irreversible half had begun for one of them. Mitigated by
+  a `concurrency` group keyed on the ref.
 
 **Open**
 
-- 0.1.0 shipped without `py.typed` (the file is untracked), so downstream type
-  checkers ignore this package's annotations. Fixed by committing it and
-  releasing 0.1.1.
+- No reconciliation audit yet: nothing detects a tag without a package, or a
+  package without a tag. [the triad] calls a gate without an audit hope.
+- `lib/pypi/` and `lib/dist/` remain unbuilt, so "build once, promote unchanged"
+  is enforced by the workflow's shape rather than by a verb that could be run
+  anywhere.
 
 ## Related
 
 - [ADR 0001][adr-0001] -- what this package does and why it exists.
-- Design rules this decision serves: [no-human-bypass], [commit-point],
-  [single-source-of-truth], [build-once], [invariant-gate-audit].
+- Conventions this decision establishes: [release-request-refs],
+  [changelog-names-the-version].
+- Design rules it serves: [no-human-bypass], [commit-point],
+  [single-source-of-truth], [build-once], [thin-entry-thick-core], [the triad].
 
 [adr-0001]: 0001-redirect-pyright-engine-to-a-fork.md
+[release-request-refs]: ../dev/conventions.kb/release-request-refs.md
+[changelog-names-the-version]:
+  ../dev/conventions.kb/changelog-names-the-version.md
 [no-human-bypass]: ../dev/principles.kb/no-human-bypass.md
 [commit-point]: ../dev/principles.kb/commit-point-and-reconciliation.md
 [single-source-of-truth]: ../dev/principles.kb/single-source-of-truth.md
 [build-once]: ../dev/principles.kb/build-once-promote-unchanged.md
-[invariant-gate-audit]: ../dev/principles.kb/invariant-gate-audit-triad.md
+[thin-entry-thick-core]: ../dev/principles.kb/thin-entry-thick-core.md
+[the triad]: ../dev/principles.kb/invariant-gate-audit-triad.md
+[punting]: ../dev/principles.kb/obvious-failure-punting.md

@@ -1,0 +1,25 @@
+#!/bin/sh
+# Print the version a release-request ref asks for:
+#
+#     triggers/release/v1.2.3  ->  1.2.3
+#
+# This is an *expectation*, not truth. Only require-releasable may act on it,
+# and only after checking it against the changelog.
+set -eu
+
+if [ $# -ne 1 ]; then
+  echo "usage: ${0##*/} REF" >&2
+  exit 2
+fi
+
+ref="${1#refs/heads/}"
+
+case "$ref" in
+triggers/release/v?*) ;;
+*)
+  echo "not a release request ref: $1" >&2
+  exit 2
+  ;;
+esac
+
+echo "${ref#triggers/release/v}"
