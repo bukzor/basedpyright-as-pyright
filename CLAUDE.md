@@ -1,7 +1,4 @@
 --- # workaround: anthropics/claude-code#13003
-triggers:
-    - when: creating or maintaining a .kb/ collection
-      read: skill://llm-kb
 git-caution: personal
 ---
 
@@ -62,8 +59,7 @@ Both hooks will run before every commit to maintain code quality.
 
 ## Design knowledge base
 
-`docs/dev/` holds the design knowledge base (llm-kb pattern). Load
-`Skill(llm-kb)` before editing anything under it.
+`docs/dev/` holds the design knowledge base (llm-kb pattern).
 
 - `principles.kb/` — reusable CI/CD design principles: invariants, fail-closed
   behavior, portability across entry points, and the rules for punting work.
