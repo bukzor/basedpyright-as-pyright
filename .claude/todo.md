@@ -32,6 +32,22 @@ template's harvest task
       `copier-template/`, so generated repos get no `.github/workflows`. Added
       `ci.yml` (strict pyright + pytest) and `dependabot.yml` here.
 
+## Live release caveats (2026-09-10)
+
+Two facts the next release depends on, both found rehearsing the pipeline.
+Neither is a template concern; they are this repo's own operating state.
+
+- [ ] **The TestPyPI leg is currently vacuous.** `skip-existing: true` means a
+      version already staged there uploads nothing and passes — and the stored
+      0.1.1 predates `py.typed`, so it does not match what we would ship. Before
+      the next release, either bump to 0.1.2 or delete the staged TestPyPI
+      files. Production is unaffected: `publish-pypi` promotes the artifact
+      built in this run, never the TestPyPI copy.
+- [ ] **The deploy-key tag push is the one leg never exercised end-to-end.** It
+      runs last and can fail after a successful upload, leaving a published
+      version untagged. Recovery is `gh run rerun --job` on `tag` alone, which
+      re-publishes nothing — verify that path before trusting it under pressure.
+
 ## Release/CD back-port (2026-09-10)
 
 Building the PyPI release pipeline here (ADR 0002) surfaced a much larger set,
