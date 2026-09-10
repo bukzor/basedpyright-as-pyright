@@ -1,6 +1,7 @@
 --- # workaround: anthropics/claude-code#13003
-requires:
-    - Skill(llm-kb)
+triggers:
+    - when: creating or maintaining a .kb/ collection
+      read: skill://llm-kb
 git-caution: personal
 ---
 
@@ -43,7 +44,8 @@ This project was generated from a copier template. The template has already been
 configured with your project details:
 
 - Project name: basedpyright-as-pyright
-- Description: Redirect the pyright engine to basedpyright, gated by the PYRIGHT env var.
+- Description: Redirect the pyright engine to basedpyright, gated by the PYRIGHT
+  env var.
 - Python version: 3.10+
 
 To add dependencies, edit `pyproject.toml` and run `uv sync`.
@@ -65,7 +67,7 @@ Both hooks will run before every commit to maintain code quality.
 
 - `principles.kb/` — reusable CI/CD design principles: invariants, fail-closed
   behavior, portability across entry points, and the rules for punting work.
-- `conventions.kb/` — concrete choices for this repo: the `get`/`require`/`ensure`
-  verb taxonomy and the `lib/` directory layout.
+- `conventions.kb/` — concrete choices for this repo: the
+  `get`/`require`/`ensure` verb taxonomy and the `lib/` directory layout.
 
 Point-in-time decisions with context and alternatives live in `docs/adr/`.
